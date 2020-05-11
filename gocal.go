@@ -100,7 +100,7 @@ func checkModuleImports(moduleName string, forbiddenModulePaths []string) {
 			cleanPath := strings.ReplaceAll(imp.Path.Value, "\"", "")
 			for _, forbiddenPath := range forbiddenModulePaths {
 				if strings.HasPrefix(cleanPath, forbiddenPath) {
-					fmt.Printf("%s: Forbidden import of %s\n", path, forbiddenPath)
+					fmt.Printf("%s: Forbidden import of '%s'\n", path, forbiddenPath)
 				}
 			}
 		}
