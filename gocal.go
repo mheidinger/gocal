@@ -17,6 +17,8 @@ const (
 	defaultConfigPath = ".gocal"
 )
 
+// Expects current dir to be the go module to be linted
+// Use first commandline argument to pass in a different config file name
 func main() {
 	configPath := defaultConfigPath
 	if len(os.Args) > 1 {
@@ -38,13 +40,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	for it, module := range layerModules[:len(layerModules)-1] {
-		importMap := getModuleImports(module)
+	layerModulePaths := make([]string, len(layerModules))
+	for it, module := range layerModules {
+		layerModulePaths[it] = modulePath + "/" + module
+	}
 
-		checkImports(importMap, layerModules[it+1:], modulePath)
+	// Ignore last layer as it is allowed to import everything
+	for it, module := range layerModules[:len(layerModules)-1] {
+		// Use all following layers as forbidden imports
+		checkModuleImports(module, layerModulePaths[it+1:])
 	}
 }
 
+// Get path of the module we want to lint
 func getModulePath() (path string, err error) {
 	moduleBytes, err := ioutil.ReadFile(modPath)
 	if err != nil {
@@ -54,6 +62,7 @@ func getModulePath() (path string, err error) {
 	return
 }
 
+// Read config file for the modules of the clean architecture layers
 func getLayerModules(configPath string) (modules []string, err error) {
 	configBytes, err := ioutil.ReadFile(configPath)
 	if err != nil {
@@ -65,12 +74,12 @@ func getLayerModules(configPath string) (modules []string, err error) {
 	return
 }
 
-func getModuleImports(moduleName string) (imports map[string][]string) {
+// Walk through all imports of the module and its submodules and check against forbidden module paths
+func checkModuleImports(moduleName string, forbiddenModulePaths []string) {
 	if strings.HasPrefix(moduleName, "/") {
 		moduleName = "." + moduleName
 	}
 
-	imports = make(map[string][]string)
 	filepath.Walk(moduleName, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			fmt.Printf("Failed to traverse to directory: %v\n", err)
@@ -89,29 +98,14 @@ func getModuleImports(moduleName string) (imports map[string][]string) {
 
 		for _, imp := range file.Imports {
 			cleanPath := strings.ReplaceAll(imp.Path.Value, "\"", "")
-			if files, ok := imports[cleanPath]; ok {
-				imports[cleanPath] = append(files, path)
-			} else {
-				imports[cleanPath] = []string{path}
+			for _, forbiddenPath := range forbiddenModulePaths {
+				if strings.HasPrefix(cleanPath, forbiddenPath) {
+					fmt.Printf("%s: Forbidden import of %s\n", path, forbiddenPath)
+				}
 			}
 		}
 
 		return nil
 	})
 	return
-}
-
-func checkImports(importMap map[string][]string, layerModules []string, modulePath string) {
-	fullLayerModule := make([]string, len(layerModules))
-	for it, module := range layerModules {
-		fullLayerModule[it] = modulePath + "/" + module
-	}
-
-	for imp, files := range importMap {
-		for _, mod := range fullLayerModule {
-			if strings.HasPrefix(imp, mod) {
-				fmt.Printf("Forbidden import '%s' in files '%v'\n", imp, files)
-			}
-		}
-	}
 }
